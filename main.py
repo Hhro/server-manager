@@ -2,6 +2,7 @@
 import argparse
 import logging
 import paramiko
+import signal
 
 import admin
 
@@ -20,10 +21,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-s", "--servers", default="./servers.json", help="path of the servers.json")
     parser.add_argument(
-        "-v", "--verbose", action="store_true", default=False, help="verbose log messages"
-    )
-    parser.add_argument(
-        "-V", "--debug", action="store_true", default=False, help="more verbose log messages"
+        "-V", "--debug", action="store_true", default=False, help="print debug messages"
     )
 
     args = parser.parse_args()
@@ -47,10 +45,7 @@ if __name__ == "__main__":
         raise FileNotFoundError(f"{servers_p} not found")
 
     # logger
-    if args.verbose:
-        logging.basicConfig(level=logging.INFO)
-        paramiko.common.logging.basicConfig(level=logging.INFO)
-    elif args.debug:
+    if args.debug:
         logging.basicConfig(level=logging.DEBUG)
         paramiko.common.logging.basicConfig(level=logging.DEBUG)
 

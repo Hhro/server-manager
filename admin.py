@@ -2,7 +2,7 @@ import subprocess
 import getpass
 import json
 import logging
-
+import signal
 import paramiko
 
 from pathlib import Path
@@ -32,8 +32,9 @@ class Admin:
         self._is_encrypted: bool = is_encrypted
 
         self._servers: list[dict] = self._load_servers(self._servers_p)
-        self._client = paramiko.SSHClient()
-        self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        self._clients: dict = {}
+
+        signal.signal(signal.SIGINT, self._quit)
 
     def _load_servers(self, servers_p: Path) -> list[dict[str:str]]:
         with open(servers_p) as servers_f:
@@ -66,19 +67,26 @@ class Admin:
             return False
 
     def _connect(self, host: str, port: int) -> bool:
-        client = self._client
+        if host in self._clients.keys():    # connection already exists
+            logging.debug(f"connection already exists. return quick.")
+            return True
+
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
         passphrase: str = None
 
-        if self._is_encrypted:
-            logging.info(f"Get passphrase of the f{self._key_p}")
+        if self._is_encrypted:              # private is encrpyted with user passphrase
+            logging.debug(f"Get passphrase of the f{self._key_p}")
             passphrase = getpass.getpass(f"Passphrase for the private key: ")
 
-        logging.info(f"Try to connect to {host}:{port}")
+        logging.debug(f"Try to connect to {host}:{port}")
 
         try:
             client.connect(hostname=host, port=port,
                            username=self._user, key_filename=str(self._key_p), passphrase=passphrase)
         except Exception as e:
+            logging.debug("connect has been failed.")
             print(
                 f"Connect to {host}:{port} has been failed.\n"
                 f"Recommend to check whether private key requires passphrase.\n"
@@ -86,7 +94,8 @@ class Admin:
             )
             return False
 
-        logging.info(f"Connection to {host}:{port} has been established.")
+        logging.debug(f"Connection to {host}:{port} has been established.")
+        self._clients.update({host: {"client": client}})
         return True
 
     def _spawn_shell(self) -> None:
@@ -94,7 +103,16 @@ class Admin:
         idx = int(input("Idx > "))-1
 
         server = self._servers[idx]
-        self._connect(server["host"], server["port"])
+        if not self._connect(server["host"], server["port"]):
+            return False
+
+        client: paramiko.SSHClient = self._clients[server["host"]]["client"]
+        channel = client.invoke_shell()
+
+        self._clients[server["host"]].channel = channel
+        self._clients[server["host"]].stdin = channel.makefile_stdin()
+        self._clients[server["host"]].stdout = channel.makefile("r")
+        self._clients[server["host"]].stderr = channel.makefile_stderr()
 
     def _show_servers(self) -> None:
         for idx, srv in enumerate(self._servers):
@@ -104,8 +122,9 @@ class Admin:
             print(f"Alive: {'O' if self._health_check(srv['host']) else 'X'}")
             print()
 
-    def _quit(self) -> None:
-        self._client.close()
+    def _quit(self, signal=None, frame=None) -> None:
+        for _, client in self._clients.items():
+            client.close()
 
         print("Bye!")
         quit()
