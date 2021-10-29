@@ -7,14 +7,16 @@ import paramiko
 
 from pathlib import Path
 
+from paramiko.client import SSHClient
+
 cmds = {
     '1': {
         "repr": "Show servers",
         "method": "_show_servers"
     },
     '2': {
-        "repr": "Spawn shell",
-        "method": "_spawn_shell"
+        "repr": "Add user",
+        "method": "_add_user_to_servers"
     },
     '3': {
         "repr": "Quit",
@@ -30,9 +32,11 @@ class Admin:
         self._servers_p: Path = servers_p
 
         self._is_encrypted: bool = is_encrypted
+        self._passphrase: str = None
 
         self._servers: list[dict] = self._load_servers(self._servers_p)
         self._clients: dict = {}
+        self._sudo_pw: str = None
 
         signal.signal(signal.SIGINT, self._quit)
 
@@ -67,7 +71,7 @@ class Admin:
             return False
 
     def _connect(self, host: str, port: int) -> bool:
-        if host in self._clients.keys():    # connection already exists
+        if self._has_connection(host):    # connection already exists
             logging.debug(f"connection already exists. return quick.")
             return True
 
@@ -76,15 +80,16 @@ class Admin:
 
         passphrase: str = None
 
-        if self._is_encrypted:              # private is encrpyted with user passphrase
-            logging.debug(f"Get passphrase of the f{self._key_p}")
+        # private is encrpyted with user passphrase
+        if self._is_encrypted and not self._passphrase:
+            logging.debug(f"Get passphrase of the {self._key_p}")
             passphrase = getpass.getpass(f"Passphrase for the private key: ")
+            self._passphrase = passphrase
 
         logging.debug(f"Try to connect to {host}:{port}")
-
         try:
             client.connect(hostname=host, port=port,
-                           username=self._user, key_filename=str(self._key_p), passphrase=passphrase)
+                           username=self._user, key_filename=str(self._key_p), passphrase=self._passphrase)
         except Exception as e:
             logging.debug("connect has been failed.")
             print(
@@ -95,24 +100,11 @@ class Admin:
             return False
 
         logging.debug(f"Connection to {host}:{port} has been established.")
-        self._clients.update({host: {"client": client}})
+        self._clients.update({host: client})
         return True
 
-    def _spawn_shell(self) -> None:
-        self._show_servers()
-        idx = int(input("Idx > "))-1
-
-        server = self._servers[idx]
-        if not self._connect(server["host"], server["port"]):
-            return False
-
-        client: paramiko.SSHClient = self._clients[server["host"]]["client"]
-        channel = client.invoke_shell()
-
-        self._clients[server["host"]].channel = channel
-        self._clients[server["host"]].stdin = channel.makefile_stdin()
-        self._clients[server["host"]].stdout = channel.makefile("r")
-        self._clients[server["host"]].stderr = channel.makefile_stderr()
+    def _has_connection(self, host: str) -> bool:
+        return host in self._clients.keys()
 
     def _show_servers(self) -> None:
         for idx, srv in enumerate(self._servers):
@@ -122,9 +114,48 @@ class Admin:
             print(f"Alive: {'O' if self._health_check(srv['host']) else 'X'}")
             print()
 
+    def _add_user_to_server(self, uname: str, upw: str, server_idx: int) -> bool:
+        server = self._servers[server_idx]
+        host: str = server["host"]
+        port: int = server["port"]
+
+        if not self._connect(host, port):
+            print(f"Failed to connect to {host}:{port}")
+            return False
+
+        client: paramiko.SSHClient = self._clients[host]
+        cmd = f"sudo -S useradd -m -s /bin/bash -p {upw} {uname}"
+        stdin, stdout, stderr = client.exec_command(cmd)
+
+        # [TODO] Error handling
+        if not self._sudo_pw:
+            sudo_pw = getpass.getpass(f"Sudo password: ")
+            stdin.write(sudo_pw)
+            stdin.flush()
+            self._sudo_pw = sudo_pw
+        else:
+            stdin.write(self._sudo_pw)
+            stdin.flush()
+
+        stdin.close()
+        print(f"Succeed to add user `{uname}` @ {host}")
+        return True
+
+    def _add_user_to_servers(self) -> None:
+        user_name = input("User name: ")
+        user_pw = getpass.getpass("User password: ")
+
+        print("\n- Servers")
+        self._show_servers()
+        idxs = [
+            int(idx)-1 for idx in input("to which servers? (e.g. 1 2 3) > ").split()]
+
+        for idx in idxs:
+            self._add_user_to_server(user_name, user_pw, idx)
+
     def _quit(self, signal=None, frame=None) -> None:
-        for _, client in self._clients.items():
-            client.close()
+        for _, conn in self._clients.items():
+            conn.close()
 
         print("Bye!")
         quit()
