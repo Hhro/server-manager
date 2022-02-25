@@ -4,6 +4,7 @@ import json
 import logging
 import signal
 import paramiko
+import utils
 
 from pathlib import Path
 
@@ -80,7 +81,7 @@ class Admin:
 
         passphrase: str = None
 
-        # private is encrpyted with user passphrase
+        # private key is encrpyted with user passphrase
         if self._is_encrypted and not self._passphrase:
             logging.debug(f"Get passphrase of the {self._key_p}")
             passphrase = getpass.getpass(f"Passphrase for the private key: ")
@@ -114,7 +115,7 @@ class Admin:
             print(f"Alive: {'O' if self._health_check(srv['host']) else 'X'}")
             print()
 
-    def _add_user_to_server(self, uname: str, upw: str, server_idx: int) -> bool:
+    def _add_user_to_server(self, uname: str, shadow: str, server_idx: int) -> bool:
         server = self._servers[server_idx]
         host: str = server["host"]
         port: int = server["port"]
@@ -124,8 +125,8 @@ class Admin:
             return False
 
         client: paramiko.SSHClient = self._clients[host]
-        cmd = f"sudo -S useradd -m -s /bin/bash -p {upw} {uname}"
-        stdin, stdout, stderr = client.exec_command(cmd)
+        cmd = f"sudo -S useradd -m -s /bin/bash {uname} -p '{shadow}'"
+        stdin, _, _ = client.exec_command(cmd)
 
         # [TODO] Error handling
         if not self._sudo_pw:
@@ -136,14 +137,15 @@ class Admin:
         else:
             stdin.write(self._sudo_pw)
             stdin.flush()
-
         stdin.close()
+
         print(f"Succeed to add user `{uname}` @ {host}")
         return True
 
     def _add_user_to_servers(self) -> None:
         user_name = input("User name: ")
         user_pw = getpass.getpass("User password: ")
+        shadow = utils.mk_shadow(user_pw)
 
         print("\n- Servers")
         self._show_servers()
@@ -151,7 +153,7 @@ class Admin:
             int(idx)-1 for idx in input("to which servers? (e.g. 1 2 3) > ").split()]
 
         for idx in idxs:
-            self._add_user_to_server(user_name, user_pw, idx)
+            self._add_user_to_server(user_name, shadow, idx)
 
     def _quit(self, signal=None, frame=None) -> None:
         for _, conn in self._clients.items():
