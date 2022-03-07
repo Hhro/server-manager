@@ -2,6 +2,8 @@
 import pandas as pd
 from pathlib import Path
 
+from .display import print_title
+
 RESOURCES_DIR = (Path(__file__).parent.parent) / "rsrc"
 
 
@@ -22,7 +24,7 @@ class ResourceManager:
             self._scripts_dir.mkdir(exist_ok=True, parents=True)
 
     def list_scripts(self) -> bool:
-        print(f"{'[Scripts]':=^50}")
+        print_title("Scripts")
         print(f"{'Idx':^7} | {'Name':^40}")
         print("-"*50)
 
@@ -31,7 +33,7 @@ class ResourceManager:
         print()
 
     def list_keys(self) -> bool:
-        print(f"{'[Keys]':=^50}")
+        print_title("Keys")
         print(f"{'Idx':^7} | {'Name':^40}")
         print("-"*50)
 
@@ -40,7 +42,7 @@ class ResourceManager:
         print()
 
     def list_creds(self) -> bool:
-        print(f"{'[Creds]':=^50}")
+        print_title("Creds")
         print(f"{'Idx':^7} | {'Name':^40}")
         print("-"*50)
 

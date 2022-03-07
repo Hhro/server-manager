@@ -9,6 +9,7 @@ from pathlib import Path
 from .utils import mk_shadow
 from .account import AM
 from .resource import RM
+from .display import print_title
 
 cmds = {
     '1': {
@@ -230,7 +231,6 @@ class Admin:
 
     def login(self) -> bool:
         creds = AM.creds_of(self._uname, self._secret)
-        print(creds)
 
         if creds == False:
             return False
@@ -241,15 +241,14 @@ class Admin:
 
     def menu(self):
         while True:
-            print(f"{'[menu of '+f'{self._uname}]':=^30}")
+            print_title(f'{self._uname}')
             for cmd_idx in sorted(cmds.keys()):
                 print(f"{cmd_idx}. {cmds[cmd_idx]['repr']}")
             print()
             selected: str = input("Select > ")
-            print()
 
             if cmds[selected]['method'] != '_quit':
-                print(f"{'['+cmds[selected]['repr']+']':=^30}")
+                print_title(cmds[selected]['repr'])
 
             method: function = getattr(self, cmds[selected]["method"])
 

@@ -6,6 +6,7 @@ import logging
 
 from lib import Admin
 from lib import AM
+from lib import print_title
 
 cmds = {
     '1': {
@@ -53,15 +54,14 @@ class ServerManager:
 
     def _menu(self):
         while True:
-            print(f"{'[menu]':=^30}")
+            print_title("Server Manager")
             for cmd_idx in sorted(cmds.keys()):
                 print(f"{cmd_idx}. {cmds[cmd_idx]['repr']}")
             print()
             selected: str = input("Select > ")
-            print()
 
             if cmds[selected]['method'] != '_quit':
-                print(f"{'['+cmds[selected]['repr']+']':=^30}")
+                print_title(cmds[selected]['repr'])
 
             method: function = getattr(self, cmds[selected]["method"])
 
