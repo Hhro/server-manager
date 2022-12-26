@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .utils import mk_shadow
 from .account import AM
-from .resource import RM
+from .rsrc import RM
 from .display import print_title
 
 cmds = {
@@ -25,10 +25,14 @@ cmds = {
         "method": "_upload_file_to_servers"
     },
     '4': {
+        "repr": "Run scripts",
+        "method": "_run_scripts_on_servers"
+    },
+    '5': {
         "repr": "Add server credential",
         "method": "_add_cred"
     },
-    '5': {
+    '6': {
         "repr": "Quit",
         "method": "_quit"
     }
@@ -193,7 +197,7 @@ class Admin:
         elif select == '2':
             self._load_creds_from_csv()
 
-    def _upload_file(self, server_idx: int, local: str, remote: str) -> bool:
+    def _upload_file(self, server_idx: int, local: str, remote: str, mode: 0o664) -> bool:
         cname, cred = self._sorted_creds[server_idx]
         if not self._connect(cname):
             return False
@@ -201,10 +205,10 @@ class Admin:
         client: paramiko.SSHClient = self._clients[cname]
         sftp_client = client.open_sftp()
         sftp_client.put(local, remote)
+        sftp_client.chmod(remote, mode)
         sftp_client.close()
 
         print(f"Upload success: {local} -> {cred['host']}:{remote}")
-
         return True
 
     def _upload_file_to_servers(self) -> None:
@@ -222,10 +226,47 @@ class Admin:
         for idx in idxs:
             self._upload_file(idx, local, remote)
 
+    def _run_scripts_on_servers(self) -> None:
+        print("\n- Servers")
+        self._show_servers()
+        idxs = [
+            int(idx)-1 for idx in input("to which servers? (e.g. 1 2 3) > ").split()]
+
+        print("\n- Local script")
+        RM.list_scripts()
+        script_idx = int(input("Select script: "))
+        local = RM.get_script_p(script_idx)
+
+        if local == None:
+            print("Invalid script index")
+            return False
+
+        print("\n- Remote path")
+        remote = input("Path(default: /tmp): ")
+        remote = Path((remote if remote != "" else "/tmp")) / local.name
+
+        for server_idx in idxs:
+            self._upload_file(server_idx, str(local), str(remote), mode=0o755)
+            cname, cred = self._sorted_creds[server_idx]
+            if not self._connect(cname):
+                return False
+
+            client: paramiko.SSHClient = self._clients[cname]
+            cmd = f"sudo -S {remote}"
+            stdin, _, _ = client.exec_command(cmd)
+
+            sudo_pw = cred["sudo_pw"]
+            stdin.write(sudo_pw)
+            stdin.flush()
+            stdin.close()
+
+            print(f"Run script success: {local} -> {cred['host']}:{remote}")
+
+        return True
+
     def _quit(self, signal=None, frame=None) -> None:
         for _, conn in self._clients.items():
             conn.close()
-
         print("Bye!")
         quit()
 

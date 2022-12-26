@@ -2,10 +2,10 @@
 import os
 import json
 import base64
-
 from pathlib import Path
 from Crypto.Cipher import AES
 from hashlib import sha256
+from .rsrc import RM
 
 ACC_P = (Path(__file__).parent.parent) / "rsrc" / "accounts.json"
 
@@ -37,12 +37,8 @@ class Cipher:
 
 class AccountManager:
     def __init__(self, acc_p: Path = ACC_P):
-        if not acc_p.exists():
-            acc_p.touch()
-            acc_p.write_text("{}")
-
-        self._acc_p = acc_p
-        self._accounts: dict = json.loads(acc_p.read_text())
+        self._acc_p = RM.accounts_p
+        self._accounts: dict = RM.load_accounts()
 
     def _is_exist(self, uname: str):
         return uname in self._accounts
